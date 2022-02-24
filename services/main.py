@@ -14,6 +14,8 @@ from concurrent.futures.thread import ThreadPoolExecutor
 from itertools import product
 import multiprocessing
 from math import *
+from django import db
+
 
 from ..models import Process, Error
 from .alma_to_sudoc import exist_in_sudoc
@@ -37,6 +39,7 @@ class MainProcess(object):
             idQueue = manager.Queue()
             for i in ids:
                 idQueue.put(i)
+            db.connections.close_all()
             p = multiprocessing.Pool(8, self.init, (idQueue,))
             for result in p.imap(self.thread, self.datas):
                 num_line += 1

@@ -1,0 +1,21 @@
+{% extends 'admin/change_form.html' %}
+{% block extrahead %}
+    <style>
+       /*Message d'info*/
+        .message_aide {
+          font-size: larger;
+          margin-right: 20px;
+          margin-bottom: 20px;
+          margin-left: 20px;
+        }
+        .message_aide ul {
+          list-style: disclosure-closed;
+        }
+    </style>
+{% endblock %}
+{% block form_top %} 
+<div class="message_aide">
+  Attention ! Si la bibliothèque analysée a des collections dans une bibliothèque analysée pensez à vous assurer que ces dernières 
+  soient bien identifiées dans la <a href="{% url 'admin:sudoc_recouv_library_changelist' %}">"Table Bibliothèques et RCR"</a>
+</div>
+{% endblock %}

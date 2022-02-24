@@ -15,10 +15,6 @@ from itertools import product
 import multiprocessing
 from math import *
 from django import db
-<<<<<<< HEAD
-
-=======
->>>>>>> 75ee3baeaf894549e04fa055fa6943192b4207e5
 
 from ..models import Process, Error
 from .alma_to_sudoc import exist_in_sudoc

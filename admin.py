@@ -12,6 +12,7 @@ import csv
 import logging
 import threading
 import re
+import json
 # Register your models here.
 
 #Initialisation des logs
@@ -34,14 +35,15 @@ def chunks(lst, n):
 #Thread pour le lancement du traitement
 class ExecuteJobThread(threading.Thread):
 
-    def __init__(self,upload_file,process):
-        self.upload_file = upload_file
+    def __init__(self,alma_to_sudoc_anomalies,sudoc_to_alma_anomalies,process):
+        self.alma_to_sudoc_anomalies = alma_to_sudoc_anomalies
+        self.sudoc_to_alma_anomalies = sudoc_to_alma_anomalies
         self.process = process
         threading.Thread.__init__(self)
 
     def run(self):
         logger.debug("Lancement du traitement ExecuteJobThread")
-        handle_uploaded_file = main.MainProcess(self.upload_file,self.process)
+        handle_uploaded_file = main.MainProcess(self.alma_to_sudoc_anomalies,self.sudoc_to_alma_anomalies,self.process)
         handle_uploaded_file.run()
         logger.debug("Ending ExecuteJobThread")
 
@@ -52,7 +54,7 @@ class ModesExport:
         meta = self.model._meta
         field_names = [field.name for field in meta.fields]
         first_result = queryset.first()
-        file_name = "{}_{}_{}".format(first_result.error_process.process_library.library_name,first_result.error_process.process_job_type,first_result.error_type)
+        file_name = "{}_{}".format(first_result.error_process.process_library.library_name,first_result.error_type)
         response = HttpResponse(content_type='text/csv')
         response['Content-Disposition'] = 'attachment; filename={}.csv'.format(file_name)
         writer = csv.writer(response)
@@ -86,9 +88,9 @@ class ModesExport:
     def export_as_set(self, request, queryset):
         #Permet de faire un set avec les notices en erreur 
         first_result = queryset.first()
-        if first_result.error_process.process_job_type == 'SUDOC_TO_ALMA' :
-            messages.error(request, "La création des jeux de résultat n'est pas disponible pour les anomalies issues du recouvrement Sudoc vers Alma. Utilisez l'export CSV.")
-            return HttpResponseRedirect(request.path_info)  
+        # if first_result.error_process.process_job_type == 'SUDOC_TO_ALMA' :
+        #     messages.error(request, "La création des jeux de résultat n'est pas disponible pour les anomalies issues du recouvrement Sudoc vers Alma. Utilisez l'export CSV.")
+        #     return HttpResponseRedirect(request.path_info)  
         set_name = "{}_{}".format(first_result.error_process,first_result.error_type)     
         apikey=settings.ALMA_API_KEY[first_result.error_process.process_library.institution]
         #On créé un set que l'on va ensuite alimenter. On e peut créeer dire'ctement un set alimenté avec des PPNS 
@@ -107,7 +109,7 @@ class ModesExport:
                 nb_ligne += 1
                 members_list.append({"id" : "(PPN){}".format(obj.error_ppn)})
                 logger.debug(obj.error_ppn)
-                if nb_ligne%1000 == 0 :
+                if nb_ligne%999== 0 :
                     error,reponse = api_set.update_set(reponse,members_list,set_name)
                     members_list = []
                     if error :
@@ -133,7 +135,6 @@ class LibraryAdmin(admin.ModelAdmin,ModesExport):
 @admin.register(Process)
 class ProcessAdmin(admin.ModelAdmin):
     list_display = ('process_library',
-                    'process_job_type',
                     'process_is_done', 
                     'process_start_date',
                     'process_end_date',
@@ -147,8 +148,8 @@ class ProcessAdmin(admin.ModelAdmin):
                     'link_process_num_doublons_notices_alma',
                     'link_process_num_erreurs_requetes')
     ordering = ('-process_start_date', 'process_library')
-    list_filter = ['process_library','process_job_type', 'process_start_date']
-    search_fields = ('process_library', 'process_job_type', 'process_start_date','process_is_done','id')
+    list_filter = ['process_library','process_start_date']
+    search_fields = ('process_library', 'process_start_date','process_is_done','id')
     form = UploadFileForm
     
     # Ajoute un bloc dédié au messade utilisateur
@@ -168,35 +169,51 @@ class ProcessAdmin(admin.ModelAdmin):
                  fail_silently=False):
         pass
 
-
-    def save_model(self, request, obj, form, change):
-        user = request.user
-        form.save(commit=False)
-        obj.process_num_title_to_processed = sum(1 for line in request.FILES['file'])
-        obj.process_user = user
-        logger.debug(obj)
-        obj.save()
-        logger.info("Process cree")            
-        lines=[]
-        for line in request.FILES['file']:
+    def nettoyage_des_fichiers(self,liste, obj,error_msg):
+        out_list = []
+        for line in liste :
             line = line.rstrip()
             clean_ppn = re.search("(^|\(PPN\))([0-9]{8}[0-9Xx]{1})(;|$)", line.decode())
             if clean_ppn  is None :
                 logger.debug("{} - N'est pas un PPN valide ".format(line.decode()))
                 error = Error(  error_ppn = line.decode(),
                         error_type = 'PPN_MAL_FORMATE',
-                        error_process = obj)
+                        error_process = obj,
+                        error_message = error_msg)
                 error.save()
             else :
-                lines.append(clean_ppn.group(2))
-        logger.debug(lines)
+                out_list.append(clean_ppn.group(2))
+        return set(out_list)
+
+
+    def save_model(self, request, obj, form, change):
+        user = request.user
+        form.save(commit=False)
+        obj.process_user = user
+        obj.process_num_title_to_processed = 0
+        obj.save()        
+        logger.info("Process cree")
+        liste_alma = self.nettoyage_des_fichiers(request.FILES['file_alma'],obj,'Export Alma')
+        liste_sudoc = self.nettoyage_des_fichiers(request.FILES['file_sudoc'],obj,'Export SUDOC')           
+        alma_to_sudoc_anomalies = list(liste_alma - liste_sudoc)
+        sudoc_to_alma_anomalies = list(liste_sudoc - liste_alma)
+        obj.process_num_title_processed = len(list(liste_alma.intersection(liste_sudoc)))
+        obj.process_num_title_to_processed = obj.process_num_title_processed + len(sudoc_to_alma_anomalies) + len(alma_to_sudoc_anomalies)
+        logger.debug(obj)
+        obj.save()    
+        logger.debug(alma_to_sudoc_anomalies)
+        with open('/home/loux/Téléchargements/alma_to_sudoc_anomalies.json', 'w', encoding='utf-8') as f:
+            json.dump(alma_to_sudoc_anomalies, f, ensure_ascii=False, indent=4)
+        logger.debug(sudoc_to_alma_anomalies)
+        with open('/home/loux/Téléchargements/sudoc_to_alma_anomalies.json', 'w', encoding='utf-8') as f:
+            json.dump(sudoc_to_alma_anomalies, f, ensure_ascii=False, indent=4)
         obj.process_num_ppn_mal_formate = Error.objects.filter(error_process=obj,error_type='PPN_MAL_FORMATE').count()
         obj.save()
-        #Pour l'analyse de recouvrement Alma vers le SUDOC on requête le service de l'abes par lot de 50 PPN 
-        if obj.process_job_type == "ALMA_TO_SUDOC" :
-            lines = list(chunks(lines,50))
+        # Pour l'analyse de recouvrement Alma vers le SUDOC on requête le service de l'abes par lot de 50 PPN 
+        
+        alma_to_sudoc_anomalies = list(chunks(alma_to_sudoc_anomalies,50))
         #Lancement de l'analyse de recouvrement
-        ExecuteJobThread(lines,obj).start()
+        ExecuteJobThread(alma_to_sudoc_anomalies,sudoc_to_alma_anomalies,obj).start()
         request.session['pid'] = obj.id
         messages.success(request, 'L''analyse de recouvrement a été lancée pour la bibliothèque {}. Vous recevrez un meessage sur {} à la fin du traitement'.format(obj.process_library, user.email))
         pass
@@ -262,6 +279,6 @@ class ProcessAdmin(admin.ModelAdmin):
 class ErrorAdmin(admin.ModelAdmin, ModesExport):
     list_display = ('error_ppn', 'error_type', 'error_process','error_message')
     ordering = ('error_process','error_type')
-    list_filter = ['error_process__process_library','error_type','error_process__process_job_type']
+    list_filter = ['error_process__process_library','error_type']
     search_fields = ['error_ppn', 'error_type']
     actions = ["export_as_csv", "export_as_set"]

@@ -25,55 +25,56 @@ from .alma_apis import exist_in_alma_via_api
 logger = logging.getLogger(__name__)
 
 class MainProcess(object):
-    def __init__(self, datas, process):
-        self.datas = datas
+    def __init__(self, alma_to_sudoc_anomalies,sudoc_to_alma_anomalies, process):
+        self.alma_to_sudoc_anomalies = alma_to_sudoc_anomalies
+        self.sudoc_to_alma_anomalies = sudoc_to_alma_anomalies
         self.process = process
-        logger.debug("{}".format(self.process.process_job_type))
+        self.num_title_processed = self.process.process_num_title_processed
 
     def run(self) :
-        num_line = Error.objects.filter(error_process=self.process,error_type='PPN_MAL_FORMATE').count()
-        if self.process.process_job_type == 'SUDOC_TO_ALMA':
-            ids = [0, 1, 2, 3,4,5]
-            manager = multiprocessing.Manager()
-            idQueue = manager.Queue()
-            for i in ids:
-                idQueue.put(i)
-            db.connections.close_all()
-            p = multiprocessing.Pool(8, self.init, (idQueue,))
-            for result in p.imap(self.thread, self.datas):
-                num_line += 1
-                logger.info(result)
-                ppn, (error_code, error_message) = result
-                logger.info("{}:{}:{}:{}\n".format(num_line,ppn, error_code,error_message))
-                if error_code != 'OK' :
-                    # Appel de l'api get records. Le SRU retourne parfois des erreurs ou 0 résulats pour des notices dont les localisations 
-                    # ont été masquées par la découverte. Dans ce cas on appelle le web service get
-                    if error_code in ('PPN_INCONNU_ALMA','ERREUR_REQUETE') :
-                        error_code, error_message = exist_in_alma_via_api(ppn, self.process)
-                        logger.debug(error_code)
-                        if error_code != 'OK' :
-                            error = Error(  error_ppn = ppn,
-                                error_type = error_code,
-                                error_message = error_message,
-                                error_process = self.process)
-                            error.save()
-                    else :     
+        num_line = 0
+        # Du sudoc vers Alma
+        ids = [0, 1, 2, 3,4,5]
+        manager = multiprocessing.Manager()
+        idQueue = manager.Queue()
+        for i in ids:
+            idQueue.put(i)
+        db.connections.close_all()
+        p = multiprocessing.Pool(8, self.init, (idQueue,))
+        for result in p.imap(self.thread, self.sudoc_to_alma_anomalies):
+            num_line += 1
+            logger.info(result)
+            ppn, (error_code, error_message) = result
+            logger.info("{}:{}:{}:{}\n".format(num_line,ppn, error_code,error_message))
+            if error_code != 'OK' :
+                # Appel de l'api get records. Le SRU retourne parfois des erreurs ou 0 résulats pour des notices dont les localisations 
+                # ont été masquées par la découverte. Dans ce cas on appelle le web service get
+                if error_code in ('PPN_INCONNU_ALMA','LOC_INCONNUE_ALMA','ERREUR_REQUETE') :
+                    error_code, error_message = exist_in_alma_via_api(ppn, self.process)
+                    logger.debug(error_code)
+                    if error_code != 'OK' :
                         error = Error(  error_ppn = ppn,
                             error_type = error_code,
                             error_message = error_message,
                             error_process = self.process)
                         error.save()
-                # Tous les 100 ppn traités on met à jour le compteur des nbs de titres
-                if num_line%100 == 0 :
-                    self.save_process(num_line)
-            logger.info("Tous les Threads sont termines  !!!")
-            logger.debug("{}".format(settings.ADMINS[0][1]))
-        else :
-            for ppns in self.datas :
-                exist_in_sudoc(ppns,self.process)
-                num_line += len(ppns)
-                self.save_process(num_line)
-        self.save_process(num_line,True)
+                else :     
+                    error = Error(  error_ppn = ppn,
+                        error_type = error_code,
+                        error_message = error_message,
+                        error_process = self.process)
+                    error.save()
+            # Tous les 100 ppn traités on met à jour le compteur des nbs de titres
+            if num_line%100 == 0 :
+                self.save_process(self.num_title_processed + num_line)
+        logger.info("Tous les Threads sont termines  !!!")
+        logger.debug("{}".format(settings.ADMINS[0][1]))
+        # De Alma vers le Sudoc
+        for ppns in self.alma_to_sudoc_anomalies :
+            exist_in_sudoc(ppns,self.process)
+            num_line += len(ppns)
+            self.save_process(self.num_title_processed + num_line)
+        self.save_process(self.num_title_processed + num_line,True)
         
         plain_message = loader.render_to_string("sudoc_recouv/end_process_message.txt", locals())
         user_email = EmailMessage(

@@ -32,10 +32,6 @@ class Library(models.Model):
         verbose_name_plural = "Bibliothèques et RCR"
 
 class Process(models.Model):
-    ALMA_TO_SUDOC = 'ALMA_TO_SUDOC'
-    SUDOC_TO_ALMA = 'SUDOC_TO_ALMA'
-    JOB_TYPE_CHOICES = [    (ALMA_TO_SUDOC, 'Comparer les localisations Alma avec les localisations SUDOC'),
-                            (SUDOC_TO_ALMA, 'Comparer les localisations SUDOC avec les localisations ALMA')]
     process_library = models.ForeignKey(
         Library,
         on_delete=models.CASCADE,
@@ -43,7 +39,6 @@ class Process(models.Model):
     )
     process_start_date = models.DateTimeField(auto_now_add=True, verbose_name=u"Date et heure de début du traitement")
     process_end_date = models.DateTimeField(auto_now_add=False, verbose_name=u"Date et heure de fin du traitement", null=True)
-    process_job_type = models.CharField(max_length=13,verbose_name=u"Analyse de recouvrement",choices=JOB_TYPE_CHOICES,default=ALMA_TO_SUDOC)
     process_is_done = models.BooleanField(default=False,verbose_name=u"Traitement terminé ?")
     process_num_title_to_processed = models.IntegerField(verbose_name=u"Nombre de titres à traiter")
     process_num_title_processed = models.IntegerField(verbose_name=u"Nombre de titres traités", default=0)
@@ -61,7 +56,7 @@ class Process(models.Model):
     )
 
     def __str__(self):
-        return str("{}-{}-{}".format(self.process_library.library_name,self.process_job_type,self.process_start_date ))
+        return str("{}-{}".format(self.process_library.library_name,self.process_start_date ))
 
     class Meta:
         verbose_name = "Analyse de recouvrement"

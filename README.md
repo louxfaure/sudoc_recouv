@@ -1,9 +1,11 @@
 # Programme d'analyse de recouvrement
 
-Ce programme est un module Django qui permet de conduire des analyses de recouvrement des collections d'une bibliothèque donnée avec les localisations SUDOC et inversement. Il premet d'identifier les notices désynchronisées. Le programme prend en paramètre une liste de PPN à téléversé dans un fichier. 
+Ce programme est un module Django qui permet de conduire des analyses de recouvrement des collections d'une bibliothèque donnée avec les localisations SUDOC et inversement. Il premet d'identifier les notices désynchronisées. Le programme prend en paramètre une liste de PPN à téléversé dans un fichier. Il utilse le sru Alma et le webservice SUDOC .abes.
 
+![Ecran de saisie](image.png)
 L'analyse peut être conduite de Alma vers le SUDOC ou du Sudoc vers Alma
 
+**UPDATE juin 2022 :** En cas de gros volumes de données à traiter il es possible de comparer directement deux fichiers.
 
 ## Rapport d'analyse
 Le programme produit un rapport d'analyse indiquant les erreurs suivantes.
@@ -17,7 +19,9 @@ Le programme produit un rapport d'analyse indiquant les erreurs suivantes.
 | DOUBLON_ALMA | Plusieurs notices ont été trouvées dans Alma avec le même PPN|
 | ERREUR_REQUETE | Erreur lors de l''appel au sru Alma ou au webservice Abes|
 
-Les rapports
+![Rapports](image1.png)
+
+Les rlistes d'anomalies peuvent être téléchagées en csv
 
 ## Bibliothèques et RCR
 

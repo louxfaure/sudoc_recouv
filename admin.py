@@ -202,11 +202,6 @@ class ProcessAdmin(admin.ModelAdmin):
         logger.debug(obj)
         obj.save()    
         logger.debug(alma_to_sudoc_anomalies)
-        with open('/home/loux/Téléchargements/alma_to_sudoc_anomalies.json', 'w', encoding='utf-8') as f:
-            json.dump(alma_to_sudoc_anomalies, f, ensure_ascii=False, indent=4)
-        logger.debug(sudoc_to_alma_anomalies)
-        with open('/home/loux/Téléchargements/sudoc_to_alma_anomalies.json', 'w', encoding='utf-8') as f:
-            json.dump(sudoc_to_alma_anomalies, f, ensure_ascii=False, indent=4)
         obj.process_num_ppn_mal_formate = Error.objects.filter(error_process=obj,error_type='PPN_MAL_FORMATE').count()
         obj.save()
         # Pour l'analyse de recouvrement Alma vers le SUDOC on requête le service de l'abes par lot de 50 PPN 
